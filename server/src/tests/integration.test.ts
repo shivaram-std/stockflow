@@ -1,9 +1,20 @@
 /**
- * Comprehensive Backend Integration & Multi-Tenancy Isolation Test Suite
- * Tests against real SQLite database, real bcrypt password hashing, and real JWT authentication.
+ * StockFlow Phase 3: Comprehensive Security, Multi-Tenancy & Integration Test Suite
+ * Validates:
+ * 1. Authentication & JWT Security (expiration, tampering, missing auth)
+ * 2. Protection against password hash leaks
+ * 3. Protected endpoint access control
+ * 4. Cross-tenant data isolation & URL/body parameter injection prevention
+ * 5. Tenant-scoped SKU uniqueness
+ * 6. Input validation & negative values protection (Zod)
+ * 7. Dashboard metrics & low-stock calculations
+ * 8. Organization settings isolation
  */
 
+import jwt from 'jsonwebtoken';
+
 const API_BASE = 'http://localhost:5001/api';
+const JWT_SECRET = process.env.JWT_SECRET || 'stockflow-dev-secret-key-12345';
 
 interface AuthResponse {
   token: string;
@@ -46,154 +57,231 @@ async function request(endpoint: string, options: RequestInit = {}): Promise<{ s
   return { status: response.status, data };
 }
 
-async function runTests() {
-  console.log('=== Starting StockFlow Backend & Multi-Tenancy Test Suite ===\n');
+async function runTestSuite() {
+  console.log('================================================================');
+  console.log('  StockFlow Backend & Security Verification Test Suite');
+  console.log('================================================================\n');
 
-  const timestamp = Date.now();
-  const orgA_email = `owner_a_${timestamp}@example.com`;
-  const orgB_email = `owner_b_${timestamp}@example.com`;
-  const password = 'Password123!';
+  const ts = Date.now();
+  const orgAEmail = `admin_a_${ts}@teststore.com`;
+  const orgBEmail = `admin_b_${ts}@teststore.com`;
+  const password = 'SecurePassword123!';
 
-  // --- TEST GROUP 1: Authentication & Organization Creation ---
-  console.log('Group 1: Authentication & Organization Setup');
+  // ============================================================================
+  // SECTION 1: AUTHENTICATION, PASSWORD HASHING & JWT EXPIRATION
+  // ============================================================================
+  console.log('--- Section 1: Authentication & JWT Security ---');
 
   // 1.1 Signup Org A
   const signupA = await request('/auth/signup', {
     method: 'POST',
     body: JSON.stringify({
-      email: orgA_email,
+      email: orgAEmail,
       password,
-      organizationName: `Acme Corp ${timestamp}`,
+      organizationName: `Alpha Store ${ts}`,
     }),
   });
-  assert(signupA.status === 201, 'Signup Org A succeeds (201)', JSON.stringify(signupA.data));
+  assert(signupA.status === 201, 'Signup Org A succeeds (201)');
   const authA: AuthResponse = signupA.data;
   assert(!!authA.token, 'Signup Org A returns JWT token');
-  assert(authA.user.organization.name.startsWith('Acme Corp'), 'Org A name is properly assigned');
 
-  // 1.2 Signup Org B
+  // 1.2 Verify password hashes are NEVER exposed in signup response
+  const signupStrA = JSON.stringify(signupA.data);
+  assert(
+    !signupStrA.includes('passwordHash') && !signupStrA.includes('$2a$') && !signupStrA.includes('$2b$'),
+    'Password hash is NOT exposed in signup response'
+  );
+
+  // 1.3 Signup Org B
   const signupB = await request('/auth/signup', {
     method: 'POST',
     body: JSON.stringify({
-      email: orgB_email,
+      email: orgBEmail,
       password,
-      organizationName: `Beta Retail ${timestamp}`,
+      organizationName: `Beta Store ${ts}`,
     }),
   });
   assert(signupB.status === 201, 'Signup Org B succeeds (201)');
   const authB: AuthResponse = signupB.data;
-  assert(authA.user.organizationId !== authB.user.organizationId, 'Org A and Org B have distinct Organization IDs');
-
-  // 1.3 Duplicate email prevention
-  const dupSignup = await request('/auth/signup', {
-    method: 'POST',
-    body: JSON.stringify({
-      email: orgA_email,
-      password,
-      organizationName: 'Duplicate Attempt',
-    }),
-  });
-  assert(dupSignup.status === 409, 'Duplicate signup rejected with 409 Conflict');
+  assert(authA.user.organizationId !== authB.user.organizationId, 'Distinct Organization IDs created');
 
   // 1.4 Login Org A
   const loginA = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email: orgA_email, password }),
+    body: JSON.stringify({ email: orgAEmail, password }),
   });
-  assert(loginA.status === 200, 'Login Org A succeeds with valid credentials (200)');
+  assert(loginA.status === 200, 'Login Org A succeeds (200)');
+  assert(!!loginA.data.token, 'Login Org A returns JWT token');
 
-  // 1.5 Login with invalid password
-  const badLogin = await request('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email: orgA_email, password: 'WrongPassword!' }),
-  });
-  assert(badLogin.status === 401, 'Login with incorrect password rejected (401)');
+  // 1.5 Verify password hashes are NEVER exposed in login response
+  const loginStrA = JSON.stringify(loginA.data);
+  assert(
+    !loginStrA.includes('passwordHash') && !loginStrA.includes('$2a$') && !loginStrA.includes('$2b$'),
+    'Password hash is NOT exposed in login response'
+  );
 
-  // 1.6 Authenticated /me endpoint
+  // 1.6 Verify password hashes are NEVER exposed in /api/auth/me response
   const meA = await request('/auth/me', {
     headers: { Authorization: `Bearer ${authA.token}` },
   });
-  assert(meA.status === 200 && meA.data.user.email === orgA_email, 'GET /auth/me returns authenticated tenant profile');
+  assert(meA.status === 200, 'GET /api/auth/me succeeds (200)');
+  const meStrA = JSON.stringify(meA.data);
+  assert(
+    !meStrA.includes('passwordHash') && !meStrA.includes('$2a$') && !meStrA.includes('$2b$'),
+    'Password hash is NOT exposed in /auth/me response'
+  );
 
-  // --- TEST GROUP 2: Product Management & Scoped SKU Uniqueness ---
-  console.log('\nGroup 2: Product Management & SKU Scoping');
+  // 1.7 Expired JWT Token Rejection
+  const expiredToken = jwt.sign(
+    { userId: authA.user.id, email: authA.user.email, organizationId: authA.user.organizationId, organizationName: 'Alpha' },
+    JWT_SECRET,
+    { expiresIn: '-5s' }
+  );
+  const expiredRes = await request('/products', {
+    headers: { Authorization: `Bearer ${expiredToken}` },
+  });
+  assert(expiredRes.status === 401, 'Expired JWT token rejected with 401 Unauthorized');
 
-  // 2.1 Create Product in Org A
-  const createProdA1 = await request('/products', {
+  // 1.8 Tampered JWT Token Rejection
+  const tamperedToken = authA.token.substring(0, authA.token.length - 8) + 'ABCDEFGH';
+  const tamperedRes = await request('/products', {
+    headers: { Authorization: `Bearer ${tamperedToken}` },
+  });
+  assert(tamperedRes.status === 401, 'Tampered JWT token rejected with 401 Unauthorized');
+
+  // 1.9 Malformed Token (Missing Bearer prefix)
+  const malformedRes = await request('/products', {
+    headers: { Authorization: authA.token },
+  });
+  assert(malformedRes.status === 401, 'Token without Bearer prefix rejected with 401');
+
+  // ============================================================================
+  // SECTION 2: ACCESS CONTROL & UNAUTHORIZED REQUESTS
+  // ============================================================================
+  console.log('\n--- Section 2: Access Control for Protected APIs ---');
+
+  const unauthProducts = await request('/products');
+  assert(unauthProducts.status === 401, 'GET /products without token rejected (401)');
+
+  const unauthCreate = await request('/products', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Sneaky', sku: 'SNK-01', quantityOnHand: 5 }),
+  });
+  assert(unauthCreate.status === 401, 'POST /products without token rejected (401)');
+
+  const unauthStats = await request('/dashboard/stats');
+  assert(unauthStats.status === 401, 'GET /dashboard/stats without token rejected (401)');
+
+  const unauthSettings = await request('/settings');
+  assert(unauthSettings.status === 401, 'GET /settings without token rejected (401)');
+
+  const unauthPutSettings = await request('/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ defaultLowStockThreshold: 10 }),
+  });
+  assert(unauthPutSettings.status === 401, 'PUT /settings without token rejected (401)');
+
+  // ============================================================================
+  // SECTION 3: PRODUCT MANAGEMENT, SKU UNIQUENESS & TENANT ISOLATION
+  // ============================================================================
+  console.log('\n--- Section 3: Product Management & Multi-Tenant Isolation ---');
+
+  // 3.1 Create Product A1 (In stock)
+  const prodA1Res = await request('/products', {
     method: 'POST',
     headers: { Authorization: `Bearer ${authA.token}` },
     body: JSON.stringify({
-      name: 'MacBook Pro 16',
-      sku: 'MBP-16',
-      description: 'M3 Pro 36GB RAM',
-      quantityOnHand: 10,
-      costPrice: 2000,
-      sellingPrice: 2499,
-      lowStockThreshold: 4,
+      name: 'Sony WH-1000XM5',
+      sku: 'SONY-XM5',
+      description: 'Noise Cancelling Headphones',
+      quantityOnHand: 25,
+      costPrice: 280.0,
+      sellingPrice: 399.99,
+      lowStockThreshold: 8,
     }),
   });
-  assert(createProdA1.status === 201, 'Org A creates Product 1 (MBP-16)');
-  const prodA1 = createProdA1.data.product;
+  assert(prodA1Res.status === 201, 'Org A creates Product A1 (SONY-XM5)');
+  const prodA1 = prodA1Res.data.product;
 
-  // 2.2 Create Product 2 in Org A (low stock: qty 2 <= default 5)
-  const createProdA2 = await request('/products', {
+  // 3.2 Create Product A2 (Low stock using org default 5)
+  const prodA2Res = await request('/products', {
     method: 'POST',
     headers: { Authorization: `Bearer ${authA.token}` },
     body: JSON.stringify({
-      name: 'Magic Mouse',
-      sku: 'MM-BLACK',
-      quantityOnHand: 2,
-      costPrice: 50,
-      sellingPrice: 99,
-      lowStockThreshold: null, // Should use org default threshold (5)
+      name: 'USB-C Cable 2M',
+      sku: 'CABLE-USBC',
+      quantityOnHand: 3, // 3 <= default 5 -> low stock!
+      sellingPrice: 19.99,
+      lowStockThreshold: null,
     }),
   });
-  assert(createProdA2.status === 201, 'Org A creates Product 2 with default threshold');
-  assert(createProdA2.data.product.isLowStock === true, 'Product 2 automatically flagged isLowStock=true (qty 2 <= default 5)');
+  assert(prodA2Res.status === 201, 'Org A creates Product A2 (CABLE-USBC)');
+  const prodA2 = prodA2Res.data.product;
+  assert(prodA2Res.data.product.isLowStock === true, 'Product A2 correctly marked isLowStock=true (3 <= 5)');
 
-  // 2.3 Duplicate SKU in SAME organization must fail
-  const dupSkuOrgA = await request('/products', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${authA.token}` },
-    body: JSON.stringify({
-      name: 'Another MacBook',
-      sku: 'MBP-16', // Same SKU in Org A
-      quantityOnHand: 5,
-    }),
-  });
-  assert(dupSkuOrgA.status === 409, 'Duplicate SKU in same organization rejected with 409 Conflict');
-
-  // 2.4 Same SKU in DIFFERENT organization MUST SUCCEED (tenant-scoped uniqueness)
-  const sameSkuOrgB = await request('/products', {
+  // 3.3 Create Product B1 in Org B with IDENTICAL SKU ('SONY-XM5')
+  const prodB1Res = await request('/products', {
     method: 'POST',
     headers: { Authorization: `Bearer ${authB.token}` },
     body: JSON.stringify({
-      name: "Org B's MacBook",
-      sku: 'MBP-16', // Same SKU as Org A, but in Org B
-      quantityOnHand: 7,
+      name: "Beta's Sony Headphones",
+      sku: 'SONY-XM5', // Exact same SKU, different tenant
+      quantityOnHand: 12,
+      sellingPrice: 389.99,
     }),
   });
-  assert(sameSkuOrgB.status === 201, 'Same SKU in different organization allowed (tenant-scoped SKU uniqueness)');
-  const prodB1 = sameSkuOrgB.data.product;
+  assert(prodB1Res.status === 201, 'Same SKU allowed in Org B (tenant-scoped SKU uniqueness)');
+  const prodB1 = prodB1Res.data.product;
 
-  // --- TEST GROUP 3: Strict Multi-Tenant Data Isolation ---
-  console.log('\nGroup 3: Multi-Tenant Data Isolation Enforcement');
+  // 3.4 Duplicate SKU in SAME Org A must be rejected
+  const dupSkuRes = await request('/products', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authA.token}` },
+    body: JSON.stringify({
+      name: 'Duplicate SKU Attempt',
+      sku: 'SONY-XM5', // Duplicate in Org A
+      quantityOnHand: 1,
+    }),
+  });
+  assert(dupSkuRes.status === 409, 'Duplicate SKU in same org rejected with 409 Conflict');
 
-  // 3.1 Org B attempts to read Org A's product by ID
+  // ============================================================================
+  // SECTION 4: ANTI-TAMPERING & PARAMETER INJECTION PREVENTION
+  // ============================================================================
+  console.log('\n--- Section 4: Anti-Tampering & OrganizationId Injection ---');
+
+  // 4.1 Request Body Injection: Org B sends organizationId of Org A during product creation
+  const injectedCreateRes = await request('/products', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authB.token}` },
+    body: JSON.stringify({
+      name: 'Injected Org Product',
+      sku: 'INJECT-01',
+      quantityOnHand: 5,
+      organizationId: authA.user.organizationId, // Attempted spoof of Org A
+    }),
+  });
+  assert(injectedCreateRes.status === 201, 'Product created successfully');
+  assert(
+    injectedCreateRes.data.product.organizationId === authB.user.organizationId,
+    'Client-supplied organizationId ignored; assigned to authenticated Org B'
+  );
+
+  // 4.2 Cross-Tenant Read: Org B attempts to get Org A's product by ID
   const crossGet = await request(`/products/${prodA1.id}`, {
     headers: { Authorization: `Bearer ${authB.token}` },
   });
-  assert(crossGet.status === 404, 'Org B cannot view Org A product (returns 404)');
+  assert(crossGet.status === 404, 'Org B cannot view Org A product by ID (returns 404)');
 
-  // 3.2 Org B attempts to update Org A's product
+  // 4.3 Cross-Tenant Update: Org B attempts to update Org A's product
   const crossPut = await request(`/products/${prodA1.id}`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${authB.token}` },
-    body: JSON.stringify({ name: 'Hacked Name' }),
+    body: JSON.stringify({ name: 'Tampered Product Name' }),
   });
   assert(crossPut.status === 404, 'Org B cannot update Org A product (returns 404)');
 
-  // 3.3 Org B attempts to adjust stock of Org A's product
+  // 4.4 Cross-Tenant Stock Adjust: Org B attempts to adjust Org A's stock
   const crossAdjust = await request(`/products/${prodA1.id}/stock`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${authB.token}` },
@@ -201,100 +289,161 @@ async function runTests() {
   });
   assert(crossAdjust.status === 404, 'Org B cannot adjust stock of Org A product (returns 404)');
 
-  // 3.4 Org B attempts to delete Org A's product
+  // 4.5 Cross-Tenant Delete: Org B attempts to delete Org A's product
   const crossDelete = await request(`/products/${prodA1.id}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${authB.token}` },
   });
   assert(crossDelete.status === 404, 'Org B cannot delete Org A product (returns 404)');
 
-  // 3.5 Org A's product list does not contain Org B's products
-  const listA = await request('/products', {
+  // 4.6 Verify Org A's product was not altered or deleted
+  const verifyProdA1 = await request(`/products/${prodA1.id}`, {
     headers: { Authorization: `Bearer ${authA.token}` },
   });
-  const listB = await request('/products', {
-    headers: { Authorization: `Bearer ${authB.token}` },
+  assert(
+    verifyProdA1.status === 200 && verifyProdA1.data.product.name === 'Sony WH-1000XM5',
+    "Org A product remains untouched after Org B's unauthorized attempts"
+  );
+
+  // ============================================================================
+  // SECTION 5: INPUT VALIDATION & BOUNDARY CONDITIONS (Zod)
+  // ============================================================================
+  console.log('\n--- Section 5: Input Validation & Boundary Checks ---');
+
+  // 5.1 Invalid email format on signup
+  const badEmailRes = await request('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'not-an-email', password: 'Password123!', organizationName: 'Bad Email Org' }),
   });
-  assert(listA.data.products.length === 2, "Org A's product list contains exactly its 2 products");
-  assert(listB.data.products.length === 1, "Org B's product list contains exactly its 1 product");
-  const crossContamination = listA.data.products.some((p: any) => p.id === prodB1.id);
-  assert(!crossContamination, 'Zero cross-tenant product leakage in listing');
+  assert(badEmailRes.status === 400, 'Invalid email rejected (400)');
 
-  // --- TEST GROUP 4: Stock Adjustments & Validation ---
-  console.log('\nGroup 4: Stock Adjustments & Validations');
+  // 5.2 Short password on signup
+  const shortPassRes = await request('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'valid@example.com', password: '123', organizationName: 'Short Pass Org' }),
+  });
+  assert(shortPassRes.status === 400, 'Password < 6 characters rejected (400)');
 
-  // 4.1 Positive adjustment
-  const adjustUp = await request(`/products/${prodA1.id}/stock`, {
+  // 5.3 Empty product name
+  const emptyNameRes = await request('/products', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authA.token}` },
+    body: JSON.stringify({ name: '   ', sku: 'EMPTY-NAME', quantityOnHand: 5 }),
+  });
+  assert(emptyNameRes.status === 400, 'Empty product name rejected (400)');
+
+  // 5.4 Negative quantity on hand
+  const negQtyRes = await request('/products', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authA.token}` },
+    body: JSON.stringify({ name: 'Negative Qty', sku: 'NEG-QTY', quantityOnHand: -5 }),
+  });
+  assert(negQtyRes.status === 400, 'Negative quantityOnHand rejected (400)');
+
+  // 5.5 Negative prices
+  const negPriceRes = await request('/products', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authA.token}` },
+    body: JSON.stringify({ name: 'Negative Price', sku: 'NEG-PRICE', quantityOnHand: 5, costPrice: -10 }),
+  });
+  assert(negPriceRes.status === 400, 'Negative costPrice rejected (400)');
+
+  // 5.6 Stock adjustment dropping below zero
+  const negStockAdjust = await request(`/products/${prodA1.id}/stock`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${authA.token}` },
-    body: JSON.stringify({ adjustment: 5, note: 'Received shipment' }),
+    body: JSON.stringify({ adjustment: -100 }), // Current stock is 25
   });
-  assert(adjustUp.status === 200 && adjustUp.data.product.quantityOnHand === 15, 'Stock adjustment (+5) updates quantity to 15');
+  assert(negStockAdjust.status === 400, 'Stock adjustment reducing stock below 0 rejected (400)');
 
-  // 4.2 Negative adjustment beyond available stock must fail
-  const adjustNegative = await request(`/products/${prodA1.id}/stock`, {
+  // 5.7 Valid stock adjustment (+10)
+  const validStockAdjust = await request(`/products/${prodA1.id}/stock`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${authA.token}` },
-    body: JSON.stringify({ adjustment: -50 }),
+    body: JSON.stringify({ adjustment: 10, note: 'Restock' }),
   });
-  assert(adjustNegative.status === 400, 'Adjustment resulting in negative stock rejected with 400');
+  assert(
+    validStockAdjust.status === 200 && validStockAdjust.data.product.quantityOnHand === 35,
+    'Stock successfully increased to 35'
+  );
 
-  // --- TEST GROUP 5: Dashboard Statistics & Low-Stock Alerts ---
-  console.log('\nGroup 5: Dashboard Statistics & Low Stock Alerts');
+  // ============================================================================
+  // SECTION 6: DASHBOARD AGGREGATIONS & LOW STOCK ACCURACY
+  // ============================================================================
+  console.log('\n--- Section 6: Dashboard Statistics & Low-Stock Calculations ---');
 
   const dashA = await request('/dashboard/stats', {
     headers: { Authorization: `Bearer ${authA.token}` },
   });
-  assert(dashA.status === 200, 'GET /dashboard/stats succeeds');
-  assert(dashA.data.stats.totalProducts === 2, 'Dashboard shows 2 total products');
-  assert(dashA.data.stats.totalInventory === 17, 'Dashboard shows 17 total inventory units (15 + 2)');
-  assert(dashA.data.stats.lowStockCount === 1, 'Dashboard shows 1 low stock item');
-  assert(dashA.data.lowStockItems[0].sku === 'MM-BLACK', 'Low stock items list correctly contains MM-BLACK');
+  assert(dashA.status === 200, 'GET /dashboard/stats succeeds (200)');
+  assert(dashA.data.stats.totalProducts === 2, 'Total products count equals 2');
+  assert(dashA.data.stats.totalInventory === 38, 'Total inventory equals 38 (35 + 3)');
+  assert(dashA.data.stats.lowStockCount === 1, 'Low stock count equals 1');
+  assert(dashA.data.lowStockItems[0].sku === 'CABLE-USBC', 'Low stock items list contains CABLE-USBC');
 
-  // --- TEST GROUP 6: Settings & Dynamic Threshold Recalculation ---
-  console.log('\nGroup 6: Organization Settings');
-
-  // 6.1 Get settings
-  const settingsA = await request('/settings', {
-    headers: { Authorization: `Bearer ${authA.token}` },
+  // Verify Org B has independent stats
+  const dashB = await request('/dashboard/stats', {
+    headers: { Authorization: `Bearer ${authB.token}` },
   });
-  assert(settingsA.status === 200 && settingsA.data.settings.defaultLowStockThreshold === 5, 'Initial default threshold is 5');
+  assert(dashB.data.stats.totalProducts === 2, 'Org B has 2 products (SONY-XM5 and INJECT-01)');
+  assert(dashB.data.stats.totalInventory === 17, 'Org B total inventory is 17 (12 + 5)');
 
-  // 6.2 Update default threshold to 20 (making Product 1 also low stock!)
-  const updateSettings = await request('/settings', {
+  // ============================================================================
+  // SECTION 7: ORGANIZATION SETTINGS ISOLATION & DYNAMIC RECALCULATION
+  // ============================================================================
+  console.log('\n--- Section 7: Organization Settings Isolation ---');
+
+  // 7.1 Org A updates threshold from 5 to 40
+  const updateSettingsA = await request('/settings', {
     method: 'PUT',
     headers: { Authorization: `Bearer ${authA.token}` },
-    body: JSON.stringify({ defaultLowStockThreshold: 20 }),
+    body: JSON.stringify({ defaultLowStockThreshold: 40 }),
   });
-  assert(updateSettings.status === 200 && updateSettings.data.settings.defaultLowStockThreshold === 20, 'Updated default threshold to 20');
+  assert(updateSettingsA.status === 200, 'Org A updates default threshold to 40');
+  assert(updateSettingsA.data.settings.defaultLowStockThreshold === 40, 'Default threshold saved as 40');
 
-  // 6.3 Verify Org B settings remain isolated
+  // 7.2 Verify Org B settings remained unchanged
   const settingsB = await request('/settings', {
     headers: { Authorization: `Bearer ${authB.token}` },
   });
-  assert(settingsB.data.settings.defaultLowStockThreshold === 5, "Org B's settings remain untouched (5)");
+  assert(settingsB.data.settings.defaultLowStockThreshold === 5, 'Org B default threshold remains unchanged at 5');
 
-  // 6.4 Delete Product in Org A
-  const deleteProd = await request(`/products/${prodA1.id}`, {
+  // 7.3 Negative default threshold rejection
+  const badSettings = await request('/settings', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${authA.token}` },
+    body: JSON.stringify({ defaultLowStockThreshold: -5 }),
+  });
+  assert(badSettings.status === 400, 'Negative defaultLowStockThreshold rejected (400)');
+
+  // 7.4 Delete product in Org A
+  const deleteA = await request(`/products/${prodA2.id}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${authA.token}` },
   });
-  assert(deleteProd.status === 200, 'Product successfully deleted by owner');
+  assert(deleteA.status === 200, 'Product deleted successfully by owner');
 
-  const verifyDelete = await request(`/products/${prodA1.id}`, {
+  const verifyDeleteA = await request(`/products/${prodA2.id}`, {
     headers: { Authorization: `Bearer ${authA.token}` },
   });
-  assert(verifyDelete.status === 404, 'Deleted product is no longer retrievable');
+  assert(verifyDeleteA.status === 404, 'Deleted product returns 404');
 
-  console.log(`\n=== Test Summary: ${passedTests}/${totalTests} Passed ===`);
+  // ============================================================================
+  // SUMMARY
+  // ============================================================================
+  console.log('\n================================================================');
+  console.log(`  Test Run Complete: ${passedTests} / ${totalTests} Passed`);
+  console.log('================================================================\n');
+
   if (passedTests === totalTests) {
-    console.log(' All backend endpoints and multi-tenancy isolation tests PASSED with 100% success!\n');
+    console.log(' ALL SECURITY & INTEGRATION CHECKS PASSED!\n');
   } else {
-    console.error(' Some tests FAILED.\n');
+    console.error(' SOME TESTS FAILED.\n');
+    process.exit(1);
   }
 }
 
-runTests().catch((err) => {
-  console.error('Test execution failed:', err);
+runTestSuite().catch((err) => {
+  console.error('Fatal test execution failure:', err);
   process.exit(1);
 });
