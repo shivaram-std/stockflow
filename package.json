@@ -15,7 +15,7 @@
     "test:journey": "npm --prefix server run test:journey",
     "test:persistence": "npm --prefix server run test:persistence",
     "test:all": "npm run test:integration && npm run test:journey && npm run test:persistence",
-    "install:all": "npm install && npm --prefix server install && npm --prefix client install"
+    "install:all": "npm install --include=dev && npm --prefix server install --include=dev && npm --prefix client install --include=dev"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -6,11 +6,11 @@ declare global {
 }
 
 export const prisma =
-  global.prismaClientInstance ||
+  (globalThis as any).prismaClientInstance ||
   new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
   });
 
 if (process.env.NODE_ENV !== 'production') {
-  global.prismaClientInstance = prisma;
+  (globalThis as any).prismaClientInstance = prisma;
 }

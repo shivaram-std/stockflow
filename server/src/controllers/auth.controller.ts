@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
 import { SignupInput, LoginInput } from '../schemas/auth.schema';
@@ -19,7 +20,7 @@ export async function signup(req: Request<{}, {}, SignupInput>, res: Response): 
 
   const hashedPassword = await hashPassword(password);
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const org = await tx.organization.create({
       data: {
         name: organizationName.trim(),

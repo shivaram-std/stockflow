@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { Prisma, Product } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { CreateProductInput, UpdateProductInput, AdjustStockInput } from '../schemas/product.schema';
 
@@ -13,7 +14,7 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
 
   const defaultThreshold = org?.defaultLowStockThreshold ?? 5;
 
-  const whereClause: any = {
+  const whereClause: Prisma.ProductWhereInput = {
     organizationId,
   };
 
@@ -29,7 +30,7 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
     orderBy: { createdAt: 'desc' },
   });
 
-  const enrichedProducts = products.map((product) => {
+  const enrichedProducts = products.map((product: Product) => {
     const effectiveThreshold = product.lowStockThreshold ?? defaultThreshold;
     return {
       ...product,
