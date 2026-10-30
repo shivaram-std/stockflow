@@ -19,7 +19,7 @@ StockFlow includes a pre-configured, isolated demo organization pre-loaded with 
 - **Demo Organization:** `StockFlow Demo Retail`
 - **Demo Email:** `demo@stockflow.com`
 - **Demo Password:** `DemoUser123!`
-- **One-Click Instant Access:** Evaluators can also click **"Instant Demo Sign In"** on the Login page to authenticate immediately without manual credential entry (zero sensitive credentials exposed in frontend code).
+- **One-Click Instant Access:** Evaluators can click the compact **"Explore Demo"** button on the Login page to authenticate immediately without manual credential entry (zero sensitive credentials exposed in frontend code).
 - **Tenant Isolation Guarantee:** Newly registered organizations always start with a clean, empty catalog (0 products). Sample demo products are strictly isolated to the demo organization and never bleed into new tenant accounts.
 - **Currency:** All financial figures, cost prices, and selling prices are formatted in Indian Rupee (**INR ₹**).
 
@@ -27,9 +27,11 @@ StockFlow includes a pre-configured, isolated demo organization pre-loaded with 
 
 ## 🌟 Live Demo & Repository
 
+- **Live Deployed Application:** [https://stockflow-app-cp8b.onrender.com](https://stockflow-app-cp8b.onrender.com)
+- **Render Web Service:** `stockflow-app` (Free Web Service + Neon Serverless PostgreSQL)
 - **Public GitHub Repository:** [https://github.com/shivaram-std/stockflow](https://github.com/shivaram-std/stockflow)
 - **Local Dev Server:** Frontend: `http://localhost:3000` | Backend API: `http://localhost:5001`
-- **Unified Production Server:** `http://localhost:5001` (Serves React SPA + Express API + SQLite on a single persistent container)
+- **Unified Production Server:** `http://localhost:5001` (Serves React SPA + Express API on a single production process)
 
 ---
 
@@ -65,8 +67,8 @@ StockFlow uses a decoupled client-server architecture with strict organization-l
                                     |
                                     v
 +-------------------------------------------------------------------------+
-|                     Persistent SQLite Storage Engine                    |
-|          (/data/stockflow.db on Docker volume / Render persistent disk) |
+|                    Cloud PostgreSQL Storage Engine                      |
+|          (Neon Serverless PostgreSQL with pooled & direct URLs)         |
 +-------------------------------------------------------------------------+
 ```
 
@@ -83,19 +85,27 @@ StockFlow uses a decoupled client-server architecture with strict organization-l
 
 ### 2. Product & Inventory Management
 - **Complete CRUD**: Create, read, update, delete products with instant feedback.
-- **Tenant-Scoped SKU Uniqueness**: Enforces `(organizationId, sku)` uniqueness constraint in SQLite, preventing collisions within an organization while permitting identical SKUs across different organizations.
+- **Tenant-Scoped SKU Uniqueness**: Enforces `(organizationId, sku)` uniqueness constraint in PostgreSQL via Prisma, preventing collisions within an organization while permitting identical SKUs across different organizations.
 - **Inventory Metrics**: Tracks Quantity on Hand, Cost Price, Selling Price, and custom thresholds.
-- **Quick Stock Adjustment**: Instant `+/-` adjustments with notes and real-time validation against negative stock levels.
+- **Quick Stock Adjustment**: Instant `+/-` adjustments with notes, preview of resulting quantities, and real-time validation against negative stock levels.
 - **Live Search & Filter**: Real-time filtering by SKU, product name, and low-stock status.
 
 ### 3. Real-Time Dashboard & Low-Stock Alerts
-- **Metrics Summary**: Real-time counters for Total Products, Total Inventory Units, and Low-Stock Alerts.
+- **Metrics Summary**: Real-time counters for Total Products, Total Inventory Units, and Low-Stock Alerts calculated from real database records.
 - **Dynamic Thresholding**: Computes `quantityOnHand <= (product.lowStockThreshold ?? org.defaultLowStockThreshold)`.
-- **Low-Stock Item Roster**: Dedicated table highlighting products requiring replenishment.
+- **Low-Stock Item Roster**: Dedicated table highlighting products requiring replenishment with current quantities and effective thresholds.
+- **Empty States**: Clear, contextual empty states for brand new organizations with zero products vs. healthy catalogs.
 
 ### 4. Organization Settings
 - **Default Low-Stock Threshold**: Configurable fallback threshold applying automatically to products without custom thresholds.
 - **Dynamic Recalculation**: Updating the organization default immediately reflects across the catalog and dashboard without manual edits.
+
+### 5. Currency Consistency & Localization
+- **Standard INR Formatting**: All cost prices, selling prices, and dashboard values are consistently formatted in Indian Rupee (**INR ₹**) with 2 decimal places.
+
+### 6. Demo Experience & Multi-Tenant Isolation
+- **Preloaded Demo Tenant**: Evaluators can explore with sample inventory via the **"Explore Demo"** button or demo credentials (`demo@stockflow.com` / `DemoUser123!`).
+- **Clean New Signups**: Newly registered organizations start with zero products, strictly isolated from demo data.
 
 ---
 
@@ -106,8 +116,8 @@ StockFlow uses a decoupled client-server architecture with strict organization-l
 | **Frontend** | React 18, TypeScript, Vite, React Router DOM, Tailwind CSS, Lucide Icons |
 | **Backend** | Node.js, Express.js, TypeScript, tsx, Zod, Helmet, CORS |
 | **Authentication** | JWT (`jsonwebtoken`), `bcryptjs` |
-| **Database & ORM** | SQLite, Prisma ORM 6.4 (with migrations) |
-| **Infrastructure** | Multi-stage Dockerfile, Render Blueprint (`render.yaml`) |
+| **Database & ORM** | PostgreSQL (Neon Serverless), Prisma ORM 6.4 (with migrations & pooled runtime) |
+| **Hosting & Deployment** | Render Web Service (`stockflow-app`), Render Blueprint (`render.yaml`), Docker |
 
 ---
 
@@ -165,18 +175,20 @@ Create the server `.env` file:
 ```bash
 cp server/.env.example server/.env
 ```
-Default development environment variables:
+Default development environment variables (without real secrets):
 ```env
 PORT=5001
 JWT_SECRET=stockflow-dev-secret-key-12345
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://user:password@ep-xyz-pooler.aws.neon.tech/neondb?sslmode=require"
+DIRECT_URL="postgresql://user:password@ep-xyz.aws.neon.tech/neondb?sslmode=require"
 NODE_ENV=development
 ```
 
-### 3. Initialize SQLite Database
-Apply Prisma migrations to create the local SQLite database:
+### 3. Initialize Database
+Generate Prisma client and apply database migrations:
 ```bash
-npm --prefix server run prisma:migrate
+npm --prefix server run prisma:generate
+npm --prefix server run prisma:deploy
 ```
 
 ### 4. Run Development Servers
@@ -194,11 +206,11 @@ npm run dev
 StockFlow includes a comprehensive automated test suite testing real database records, tenant isolation, security boundaries, and user journeys:
 
 ```bash
-# Run all tests (Security + Integration + 13-Step E2E Journey + SQLite Persistence)
+# Run all tests (Security + Integration + 13-Step E2E Journey + Persistence)
 npm run test:all
 
 # Run individual test suites
-npm run test:integration    # 50 security, multi-tenancy, and CRUD tests
+npm run test:integration    # 64 security, multi-tenancy, demo isolation, and CRUD tests
 npm run test:journey        # Complete 13-step end-to-end user workflow
 npm run test:persistence    # Database restart resilience & data survival test
 ```
@@ -228,16 +240,21 @@ npm run test:persistence    # Database restart resilience & data survival test
 
 ## 📦 Production Deployment
 
-### Option A: 1-Click Render Blueprint (with Persistent SSD Disk)
-StockFlow includes a `render.yaml` specification configured with a persistent disk so SQLite data persists across redeployments:
+### Option A: Render Cloud Deployment (Live)
+StockFlow is configured for automated continuous deployment on Render using the declarative `render.yaml` specification:
 
+- **Live URL:** [https://stockflow-app-cp8b.onrender.com](https://stockflow-app-cp8b.onrender.com)
+- **Service Name:** `stockflow-app`
+- **Build Command:** `npm run install:all && npm --prefix server run prisma:generate && npm run build`
+- **Start Command:** `npm --prefix server run prisma:deploy && npm start`
+- **Health Check Path:** `/api/health`
+- **Database:** Neon Serverless PostgreSQL (`DATABASE_URL` with connection pooler and `DIRECT_URL` for migrations)
+
+To deploy with Render Blueprint:
 1. Push your repository to GitHub.
-2. In Render Dashboard, click **New > Blueprint**.
+2. In the Render Dashboard, click **New > Blueprint**.
 3. Select your `stockflow` repository.
-4. Render will provision the web service with:
-   - Persistent Disk mounted at `/data` (1GB SSD)
-   - `DATABASE_URL=file:/data/stockflow.db`
-   - Automated Prisma migrations on build (`npx prisma migrate deploy`)
+4. Set `DATABASE_URL` and `DIRECT_URL` in environment variables and click **Apply**.
 
 ### Option B: Docker Container Deployment
 Build and run the multi-stage Docker container locally or on any cloud server:
@@ -245,10 +262,11 @@ Build and run the multi-stage Docker container locally or on any cloud server:
 # Build the production image
 docker build -t stockflow:latest .
 
-# Run container with a persistent volume for SQLite
+# Run container connected to PostgreSQL
 docker run -d \
   -p 5001:5001 \
-  -v stockflow_data:/data \
+  -e DATABASE_URL="postgresql://user:password@ep-xyz-pooler.aws.neon.tech/neondb?sslmode=require" \
+  -e DIRECT_URL="postgresql://user:password@ep-xyz.aws.neon.tech/neondb?sslmode=require" \
   -e JWT_SECRET="your-production-secret" \
   --name stockflow-app \
   stockflow:latest
