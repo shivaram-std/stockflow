@@ -9,6 +9,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  demoLogin: () => Promise<void>;
   signup: (email: string, password: string, organizationName: string) => Promise<void>;
   logout: () => void;
   updateOrganizationState: (updatedOrg: Partial<Organization>) => void;
@@ -70,6 +71,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const demoLogin = async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.auth.demoLogin();
+      api.setToken(res.token);
+      setToken(res.token);
+      setUser(res.user);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const signup = async (email: string, password: string, organizationName: string) => {
     setIsLoading(true);
     try {
@@ -103,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user && !!token,
         isLoading,
         login,
+        demoLogin,
         signup,
         logout,
         updateOrganizationState,

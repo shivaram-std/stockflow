@@ -12,9 +12,37 @@
  */
 
 import jwt from 'jsonwebtoken';
+import http from 'http';
+import app from '../index';
 
 const API_BASE = 'http://localhost:5001/api';
 const JWT_SECRET = process.env.JWT_SECRET || 'stockflow-dev-secret-key-12345';
+
+let activeServer: http.Server | null = null;
+
+async function startServerIfNeeded(): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/health`);
+    if (res.ok) return;
+  } catch {
+    // Server not running, will start
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const s = app.listen(5001, () => {
+      activeServer = s;
+      console.log('  [TEST] Express API server listening on http://localhost:5001');
+      resolve();
+    });
+    s.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve();
+      } else {
+        reject(err);
+      }
+    });
+  });
+}
 
 interface AuthResponse {
   token: string;
@@ -58,6 +86,8 @@ async function request(endpoint: string, options: RequestInit = {}): Promise<{ s
 }
 
 async function runTestSuite() {
+  await startServerIfNeeded();
+
   console.log('================================================================');
   console.log('  StockFlow Backend & Security Verification Test Suite');
   console.log('================================================================\n');
@@ -429,14 +459,88 @@ async function runTestSuite() {
   assert(verifyDeleteA.status === 404, 'Deleted product returns 404');
 
   // ============================================================================
+  // SECTION 8: DEMO ACCOUNT, SEEDING ISOLATION & EMPTY NEW TENANT STATE
+  // ============================================================================
+  console.log('\n--- Section 8: Demo Account & New Tenant Isolation ---');
+
+  // 8.1 Demo Login endpoint
+  const demoLoginRes = await request('/auth/demo', { method: 'POST' });
+  assert(demoLoginRes.status === 200, 'POST /auth/demo succeeds (200)');
+  const demoAuth = demoLoginRes.data;
+  assert(demoAuth.user.email === 'demo@stockflow.com', 'Demo user email is demo@stockflow.com');
+  assert(demoAuth.user.organization.name === 'StockFlow Demo Retail', 'Demo organization is StockFlow Demo Retail');
+
+  // 8.2 Demo products exist with realistic catalog and low stock alerts
+  const demoProductsRes = await request('/products', {
+    headers: { Authorization: `Bearer ${demoAuth.token}` },
+  });
+  assert(demoProductsRes.status === 200, 'GET /products for demo account succeeds');
+  assert(demoProductsRes.data.products.length >= 5, 'Demo organization has >= 5 realistic products');
+  const demoLowStockItems = demoProductsRes.data.products.filter((p: any) => p.isLowStock);
+  assert(demoLowStockItems.length > 0, 'Demo organization includes low-stock products');
+
+  // 8.3 Demo dashboard statistics
+  const demoDashRes = await request('/dashboard/stats', {
+    headers: { Authorization: `Bearer ${demoAuth.token}` },
+  });
+  assert(demoDashRes.status === 200, 'GET /dashboard/stats for demo account succeeds');
+  assert(demoDashRes.data.stats.totalProducts >= 5, 'Demo dashboard totalProducts reflects DB count');
+  assert(demoDashRes.data.stats.lowStockCount > 0, 'Demo dashboard has active lowStockCount');
+
+  // 8.4 Normal login with demo credentials
+  const demoNormalLogin = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'demo@stockflow.com', password: 'DemoUser123!' }),
+  });
+  assert(demoNormalLogin.status === 200, 'Standard login works with demo credentials');
+
+  // 8.5 Fresh normal signup has 0 products
+  const freshOrgEmail = `fresh_tenant_${ts}@example.com`;
+  const freshSignup = await request('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: freshOrgEmail,
+      password: 'SecurePassword123!',
+      organizationName: `Fresh Org ${ts}`,
+    }),
+  });
+  assert(freshSignup.status === 201, 'Fresh normal tenant signup succeeds');
+  const freshAuth = freshSignup.data;
+
+  const freshProducts = await request('/products', {
+    headers: { Authorization: `Bearer ${freshAuth.token}` },
+  });
+  assert(freshProducts.data.products.length === 0, 'Fresh normal organization starts with 0 products (empty catalog)');
+
+  const freshDash = await request('/dashboard/stats', {
+    headers: { Authorization: `Bearer ${freshAuth.token}` },
+  });
+  assert(
+    freshDash.data.stats.totalProducts === 0 && freshDash.data.stats.totalInventory === 0,
+    'Fresh normal organization dashboard has 0 products and 0 inventory units'
+  );
+
+  // 8.6 Demo products are isolated from new normal organization
+  const demoProdId = demoProductsRes.data.products[0].id;
+  const crossDemoAccess = await request(`/products/${demoProdId}`, {
+    headers: { Authorization: `Bearer ${freshAuth.token}` },
+  });
+  assert(crossDemoAccess.status === 404, 'Normal user cannot access demo products (404)');
+
+  // ============================================================================
   // SUMMARY
   // ============================================================================
   console.log('\n================================================================');
   console.log(`  Test Run Complete: ${passedTests} / ${totalTests} Passed`);
   console.log('================================================================\n');
 
+  if (activeServer) {
+    await new Promise<void>((resolve) => activeServer!.close(() => resolve()));
+  }
+
   if (passedTests === totalTests) {
     console.log(' ALL SECURITY & INTEGRATION CHECKS PASSED!\n');
+    process.exit(0);
   } else {
     console.error(' SOME TESTS FAILED.\n');
     process.exit(1);

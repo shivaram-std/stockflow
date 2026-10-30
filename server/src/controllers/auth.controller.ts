@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
 import { SignupInput, LoginInput } from '../schemas/auth.schema';
+import { ensureDemoAccount, DEMO_EMAIL } from '../utils/demo';
 
 export async function signup(req: Request<{}, {}, SignupInput>, res: Response): Promise<void> {
   const { email, password, organizationName } = req.body;
@@ -69,6 +70,10 @@ export async function login(req: Request<{}, {}, LoginInput>, res: Response): Pr
   const { email, password } = req.body;
 
   const normalizedEmail = email.trim().toLowerCase();
+
+  if (normalizedEmail === DEMO_EMAIL) {
+    await ensureDemoAccount();
+  }
 
   const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
@@ -138,6 +143,32 @@ export async function getCurrentUser(req: Request, res: Response): Promise<void>
         id: user.organization.id,
         name: user.organization.name,
         defaultLowStockThreshold: user.organization.defaultLowStockThreshold,
+      },
+    },
+  });
+}
+
+export async function demoLogin(req: Request, res: Response): Promise<void> {
+  const { user, organization } = await ensureDemoAccount();
+
+  const token = generateToken({
+    userId: user.id,
+    email: user.email,
+    organizationId: organization.id,
+    organizationName: organization.name,
+  });
+
+  res.json({
+    message: 'Demo login successful',
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      organizationId: organization.id,
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        defaultLowStockThreshold: organization.defaultLowStockThreshold,
       },
     },
   });

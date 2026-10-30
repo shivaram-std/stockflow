@@ -6,9 +6,22 @@
 [![TailwindCSS](https://img.shields.io/badge/Tailwind-3.4-38bdf8.svg)](https://tailwindcss.com/)
 [![Express](https://img.shields.io/badge/Express-4.21-lightgrey.svg)](https://expressjs.com/)
 [![Prisma](https://img.shields.io/badge/Prisma-6.4-2d3748.svg)](https://www.prisma.io/)
-[![SQLite](https://img.shields.io/badge/SQLite-Persistent-003B57.svg)](https://www.sqlite.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon%20Serverless-336791.svg)](https://neon.tech/)
 
 A production-minded, multi-tenant SaaS Inventory Management System tailored for growing retailers, independent sellers, and e-commerce merchants.
+
+---
+
+## 🌟 Evaluator Demo Access & Credentials
+
+StockFlow includes a pre-configured, isolated demo organization pre-loaded with a realistic inventory catalog, varying stock levels, and alert thresholds:
+
+- **Demo Organization:** `StockFlow Demo Retail`
+- **Demo Email:** `demo@stockflow.com`
+- **Demo Password:** `DemoUser123!`
+- **One-Click Instant Access:** Evaluators can also click **"Instant Demo Sign In"** on the Login page to authenticate immediately without manual credential entry (zero sensitive credentials exposed in frontend code).
+- **Tenant Isolation Guarantee:** Newly registered organizations always start with a clean, empty catalog (0 products). Sample demo products are strictly isolated to the demo organization and never bleed into new tenant accounts.
+- **Currency:** All financial figures, cost prices, and selling prices are formatted in Indian Rupee (**INR ₹**).
 
 ---
 
@@ -198,6 +211,7 @@ npm run test:persistence    # Database restart resilience & data survival test
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/auth/signup` | Public | Register new user and create organization |
 | `POST` | `/api/auth/login` | Public | Authenticate user and issue JWT token |
+| `POST` | `/api/auth/demo` | Public | One-click evaluator login to isolated demo tenant |
 | `GET` | `/api/auth/me` | Protected | Return authenticated user and organization metadata |
 | `GET` | `/api/products` | Protected | List products scoped to organization (supports `?search=`) |
 | `POST` | `/api/products` | Protected | Create new product (enforces unique SKU per organization) |

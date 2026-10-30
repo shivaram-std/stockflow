@@ -21,6 +21,7 @@ import { AdjustStockModal } from './AdjustStockModal';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { formatCurrency } from '../../utils/currency';
 
 export const ProductsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -192,16 +193,16 @@ export const ProductsPage: React.FC = () => {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[850px] text-left text-sm">
               <thead className="bg-slate-50 text-slate-500 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-6">Product & Description</th>
-                  <th className="py-3 px-6">SKU</th>
-                  <th className="py-3 px-6 text-center">Quantity</th>
-                  <th className="py-3 px-6 text-center">Status</th>
-                  <th className="py-3 px-6 text-right">Cost Price</th>
-                  <th className="py-3 px-6 text-right">Selling Price</th>
-                  <th className="py-3 px-6 text-right">Actions</th>
+                  <th className="py-3 px-6 w-auto min-w-[220px]">Product & Description</th>
+                  <th className="py-3 px-6 w-36 min-w-[130px] whitespace-nowrap">SKU</th>
+                  <th className="py-3 px-6 w-32 min-w-[120px] text-center whitespace-nowrap">Quantity</th>
+                  <th className="py-3 px-6 w-28 min-w-[110px] text-center whitespace-nowrap">Status</th>
+                  <th className="py-3 px-6 w-32 min-w-[110px] text-right whitespace-nowrap">Cost Price (₹)</th>
+                  <th className="py-3 px-6 w-32 min-w-[110px] text-right whitespace-nowrap">Selling Price (₹)</th>
+                  <th className="py-3 px-6 w-36 min-w-[130px] text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -218,16 +219,16 @@ export const ProductsPage: React.FC = () => {
                     </td>
 
                     {/* SKU */}
-                    <td className="py-4 px-6">
-                      <span className="font-mono text-xs font-semibold px-2 py-1 bg-slate-100 text-slate-700 rounded-md border border-slate-200/70">
+                    <td className="py-4 px-6 whitespace-nowrap">
+                      <span className="font-mono text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-md border border-slate-200/70 inline-block whitespace-nowrap">
                         {product.sku}
                       </span>
                     </td>
 
                     {/* Quantity */}
-                    <td className="py-4 px-6 text-center">
+                    <td className="py-4 px-6 text-center whitespace-nowrap">
                       <span
-                        className={`text-sm font-black px-2.5 py-1 rounded-xl inline-block ${
+                        className={`text-sm font-black px-2.5 py-1 rounded-xl inline-block whitespace-nowrap ${
                           product.isLowStock
                             ? 'text-rose-700 bg-rose-50 border border-rose-200'
                             : 'text-slate-800 bg-slate-100'
@@ -235,14 +236,14 @@ export const ProductsPage: React.FC = () => {
                       >
                         {product.quantityOnHand} units
                       </span>
-                      <div className="text-[10px] text-slate-400 mt-1">
+                      <div className="text-[10px] text-slate-400 mt-1 whitespace-nowrap">
                         Threshold: {product.effectiveThreshold}
                         {product.lowStockThreshold === null && ' (org)'}
                       </div>
                     </td>
 
                     {/* Status Badge */}
-                    <td className="py-4 px-6 text-center">
+                    <td className="py-4 px-6 text-center whitespace-nowrap">
                       {product.isLowStock ? (
                         <Badge variant="danger" dot>
                           Low Stock
@@ -255,18 +256,18 @@ export const ProductsPage: React.FC = () => {
                     </td>
 
                     {/* Cost Price */}
-                    <td className="py-4 px-6 text-right font-medium text-slate-600">
-                      {product.costPrice !== null ? `$${product.costPrice.toFixed(2)}` : '—'}
+                    <td className="py-4 px-6 text-right font-medium text-slate-600 whitespace-nowrap">
+                      {formatCurrency(product.costPrice)}
                     </td>
 
                     {/* Selling Price */}
-                    <td className="py-4 px-6 text-right font-bold text-slate-900">
-                      {product.sellingPrice !== null ? `$${product.sellingPrice.toFixed(2)}` : '—'}
+                    <td className="py-4 px-6 text-right font-bold text-slate-900 whitespace-nowrap">
+                      {formatCurrency(product.sellingPrice)}
                     </td>
 
                     {/* Action Buttons */}
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td className="py-4 px-6 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                         <Button
                           variant="secondary"
                           size="sm"

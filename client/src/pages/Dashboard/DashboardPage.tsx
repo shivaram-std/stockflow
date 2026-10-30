@@ -7,6 +7,7 @@ import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Skeleton, TableSkeleton } from '../../components/common/Skeleton';
 import { useToast } from '../../context/ToastContext';
+import { formatCurrency } from '../../utils/currency';
 
 export const DashboardPage: React.FC = () => {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -172,27 +173,42 @@ export const DashboardPage: React.FC = () => {
           <div className="p-6">
             <TableSkeleton rows={4} columns={5} />
           </div>
-        ) : !data || data.lowStockItems.length === 0 ? (
+        ) : !data || data.stats.totalProducts === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Package className="w-6 h-6" />
+            </div>
+            <h4 className="text-sm font-bold text-slate-800">No Products in Inventory</h4>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto mb-4">
+              Your organization catalog is empty. Add products to track stock levels, calculate inventory, and monitor low-stock warnings.
+            </p>
+            <Link to="/products">
+              <Button variant="primary" size="sm" leftIcon={<Package className="w-4 h-4" />}>
+                Add Products
+              </Button>
+            </Link>
+          </div>
+        ) : data.lowStockItems.length === 0 ? (
           <div className="p-12 text-center">
             <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <h4 className="text-sm font-bold text-slate-800">All Stock Levels Healthy</h4>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              No products are currently at or below their low-stock thresholds.
+              All {data.stats.totalProducts} products are currently above their low-stock thresholds.
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full min-w-[700px] text-left text-sm">
               <thead className="bg-slate-50 text-slate-500 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-6">Product Name</th>
-                  <th className="py-3 px-6">SKU</th>
-                  <th className="py-3 px-6 text-center">Qty on Hand</th>
-                  <th className="py-3 px-6 text-center">Threshold</th>
-                  <th className="py-3 px-6 text-right">Selling Price</th>
-                  <th className="py-3 px-6 text-right">Status</th>
+                  <th className="py-3 px-6 whitespace-nowrap">SKU</th>
+                  <th className="py-3 px-6 text-center whitespace-nowrap">Qty on Hand</th>
+                  <th className="py-3 px-6 text-center whitespace-nowrap">Threshold</th>
+                  <th className="py-3 px-6 text-right whitespace-nowrap">Selling Price (₹)</th>
+                  <th className="py-3 px-6 text-right whitespace-nowrap">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -206,24 +222,28 @@ export const DashboardPage: React.FC = () => {
                         {item.name}
                       </Link>
                     </td>
-                    <td className="py-3.5 px-6 font-mono text-xs text-slate-600">
-                      {item.sku}
+                    <td className="py-3.5 px-6 whitespace-nowrap">
+                      <span className="font-mono text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md border border-slate-200/70 inline-block whitespace-nowrap">
+                        {item.sku}
+                      </span>
                     </td>
-                    <td className="py-3.5 px-6 text-center">
-                      <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+                    <td className="py-3.5 px-6 text-center whitespace-nowrap">
+                      <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200 inline-block whitespace-nowrap">
                         {item.quantityOnHand} units
                       </span>
                     </td>
-                    <td className="py-3.5 px-6 text-center text-xs text-slate-500">
-                      {item.effectiveThreshold}
-                      {item.lowStockThreshold === null && (
+                    <td className="py-3.5 px-6 text-center text-xs text-slate-500 whitespace-nowrap">
+                      <span className="font-semibold text-slate-700">{item.effectiveThreshold}</span>
+                      {item.lowStockThreshold === null ? (
                         <span className="text-[10px] text-slate-400 block">(Org default)</span>
+                      ) : (
+                        <span className="text-[10px] text-indigo-500 block">(Custom)</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-6 text-right font-medium text-slate-700">
-                      {item.sellingPrice !== null ? `$${item.sellingPrice.toFixed(2)}` : '—'}
+                    <td className="py-3.5 px-6 text-right font-medium text-slate-900 whitespace-nowrap">
+                      {formatCurrency(item.sellingPrice)}
                     </td>
-                    <td className="py-3.5 px-6 text-right">
+                    <td className="py-3.5 px-6 text-right whitespace-nowrap">
                       <Badge variant="danger" dot>
                         Low Stock
                       </Badge>

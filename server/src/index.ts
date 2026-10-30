@@ -9,6 +9,7 @@ import productRoutes from './routes/product.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import settingsRoutes from './routes/settings.routes';
 import { errorHandler } from './middleware/errorHandler';
+import { ensureDemoAccount } from './utils/demo';
 
 dotenv.config();
 
@@ -71,6 +72,9 @@ app.use(errorHandler);
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`StockFlow Server listening on http://localhost:${PORT}`);
+    ensureDemoAccount().catch((err) => {
+      console.warn('Could not initialize demo account at startup:', err.message);
+    });
   });
 }
 

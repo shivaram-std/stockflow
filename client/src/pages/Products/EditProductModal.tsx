@@ -159,7 +159,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
           />
 
           <Input
-            label="Cost Price ($)"
+            label="Cost Price (₹)"
             type="number"
             min="0"
             step="0.01"
@@ -169,7 +169,7 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({
           />
 
           <Input
-            label="Selling Price ($)"
+            label="Selling Price (₹)"
             type="number"
             min="0"
             step="0.01"

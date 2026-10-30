@@ -72,6 +72,11 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
 
+    demoLogin: () =>
+      this.request<AuthResponse>('/auth/demo', {
+        method: 'POST',
+      }),
+
     me: () => this.request<{ user: User }>('/auth/me'),
   };
 

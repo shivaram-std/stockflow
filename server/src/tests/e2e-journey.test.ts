@@ -3,7 +3,36 @@
  * Tests the complete 13-step user workflow required in Phase 4 instructions.
  */
 
+import http from 'http';
+import app from '../index';
+
 const API_BASE = 'http://localhost:5001/api';
+
+let activeServer: http.Server | null = null;
+
+async function startServerIfNeeded(): Promise<void> {
+  try {
+    const res = await fetch(`${API_BASE}/health`);
+    if (res.ok) return;
+  } catch {
+    // Server not running, will start
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const s = app.listen(5001, () => {
+      activeServer = s;
+      console.log('  [TEST] Express API server listening on http://localhost:5001');
+      resolve();
+    });
+    s.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve();
+      } else {
+        reject(err);
+      }
+    });
+  });
+}
 
 let passedSteps = 0;
 const totalSteps = 13;
@@ -31,6 +60,8 @@ async function request(endpoint: string, options: RequestInit = {}) {
 }
 
 async function runJourney() {
+  await startServerIfNeeded();
+
   console.log('================================================================');
   console.log('  StockFlow Phase 4: Complete 13-Step User Journey Verification');
   console.log('================================================================\n');
@@ -213,8 +244,13 @@ async function runJourney() {
   console.log(`  E2E User Journey Result: ${passedSteps} / ${totalSteps} Steps Passed`);
   console.log('================================================================\n');
 
+  if (activeServer) {
+    await new Promise<void>((resolve) => activeServer!.close(() => resolve()));
+  }
+
   if (passedSteps === totalSteps) {
     console.log(' ALL 13 USER JOURNEY STEPS SUCCESSFULLY COMPLETED!\n');
+    process.exit(0);
   } else {
     process.exit(1);
   }
