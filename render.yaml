@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: stockflow-app
+    env: node
+    plan: starter
+    region: oregon
+    buildCommand: npm run install:all && npm --prefix server run prisma:generate && npm run build
+    startCommand: npx --prefix server prisma migrate deploy && NODE_ENV=production node server/dist/index.js
+    disk:
+      name: stockflow-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5001
+      - key: DATABASE_URL
+        value: file:/data/stockflow.db
+      - key: JWT_SECRET
+        generateValue: true
