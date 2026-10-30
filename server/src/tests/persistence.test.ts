@@ -69,7 +69,7 @@ async function testPersistence() {
     verifyProduct.quantityOnHand === 500
   ) {
     console.log('  [PASS] All organization and product records intact after restart!');
-    console.log('  [PASS] SQLite persistence successfully verified.\n');
+    console.log('  [PASS] Database persistence successfully verified.\n');
   } else {
     console.error('  [FAIL] Data did not persist across restarts!');
     process.exit(1);

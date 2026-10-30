@@ -19,8 +19,8 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
 
   if (search) {
     whereClause.OR = [
-      { name: { contains: search } },
-      { sku: { contains: search } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { sku: { contains: search, mode: 'insensitive' } },
     ];
   }
 
