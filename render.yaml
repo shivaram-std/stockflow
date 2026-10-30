@@ -5,11 +5,14 @@ services:
     plan: free
     region: oregon
     buildCommand: npm run install:all && npm --prefix server run prisma:generate && npm run build
-    startCommand: npx --prefix server prisma migrate deploy && NODE_ENV=production node server/dist/index.js
+    startCommand: npm --prefix server run prisma:deploy && npm start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
         sync: false
       - key: JWT_SECRET
         generateValue: true

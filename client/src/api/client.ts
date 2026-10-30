@@ -3,7 +3,7 @@ import { AuthResponse, User, Product, DashboardData, Organization } from '../typ
 const TOKEN_KEY = 'stockflow_jwt_token';
 
 class ApiClient {
-  private baseUrl: string = '/api';
+  private baseUrl: string = (import.meta.env.VITE_API_URL as string) || '/api';
   private onUnauthorizedCallback?: () => void;
 
   public setOnUnauthorized(callback: () => void) {

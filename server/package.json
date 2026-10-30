@@ -11,7 +11,8 @@
     "test:journey": "tsx src/tests/e2e-journey.test.ts",
     "test:persistence": "tsx src/tests/persistence.test.ts",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev --name init"
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",
