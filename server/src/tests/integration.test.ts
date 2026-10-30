@@ -33,7 +33,7 @@ function assert(condition: boolean, testName: string, detail?: string) {
   }
 }
 
-async function request(endpoint: string, options: RequestInit = {}) {
+async function request(endpoint: string, options: RequestInit = {}): Promise<{ status: number; data: any }> {
   const url = `${API_BASE}${endpoint}`;
   const response = await fetch(url, {
     ...options,
@@ -42,7 +42,7 @@ async function request(endpoint: string, options: RequestInit = {}) {
       ...options.headers,
     },
   });
-  const data = await response.json().catch(() => null);
+  const data: any = await response.json().catch(() => null);
   return { status: response.status, data };
 }
 
